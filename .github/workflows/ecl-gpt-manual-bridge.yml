@@ -1,0 +1,159 @@
+name: ECL GPT Manual Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "ECL command to run safely"
+        required: true
+        default: "health-check"
+        type: choice
+        options:
+          - health-check
+          - build-check
+          - sync-vercel-framework
+          - workflow-sync-check
+          - supabase-schema-check
+          - apps-script-bridge-check
+          - full-safe-check
+      reason:
+        description: "Why this run is being requested"
+        required: false
+        default: "Manual ECL workflow run"
+  push:
+    paths:
+      - .gpt/ecl-command.json
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  ecl-gpt-manual-bridge:
+    name: Run safe ECL command
+    runs-on: ubuntu-latest
+    env:
+      ECL_ONLY: "true"
+      SHOPIFY_PUBLIC_STOREFRONT: "EpoxyChangesLives.com"
+      WORKFLOW_PRIMARY_PAGE: "/workflow"
+    steps:
+      - name: Checkout ECL repo
+        uses: actions/checkout@v4
+
+      - name: Resolve command
+        id: resolve
+        shell: bash
+        run: |
+          COMMAND="${{ github.event.inputs.command }}"
+          REASON="${{ github.event.inputs.reason }}"
+
+          if [ -z "$COMMAND" ] && [ -f ".gpt/ecl-command.json" ]; then
+            COMMAND=$(node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('.gpt/ecl-command.json','utf8')); console.log(c.command || 'health-check')")
+            REASON=$(node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('.gpt/ecl-command.json','utf8')); console.log(c.reason || 'Triggered by .gpt/ecl-command.json')")
+          fi
+
+          COMMAND=${COMMAND:-health-check}
+          REASON=${REASON:-Manual ECL workflow run}
+
+          case "$COMMAND" in
+            health-check|build-check|sync-vercel-framework|workflow-sync-check|supabase-schema-check|apps-script-bridge-check|full-safe-check)
+              echo "command=$COMMAND" >> "$GITHUB_OUTPUT"
+              echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported command: $COMMAND"
+              exit 1
+              ;;
+          esac
+
+      - name: Print safe run context
+        run: |
+          echo "Mission: Epoxy Changes Lives only"
+          echo "Command: ${{ steps.resolve.outputs.command }}"
+          echo "Reason: ${{ steps.resolve.outputs.reason }}"
+          echo "Shopify remains the public storefront. Vercel remains the ECL automation/control app."
+          echo "This bridge does not publish, delete Drive files, send email/SMS, post social content, or expose secrets."
+
+      - name: Install dependencies when needed
+        if: contains('build-check full-safe-check', steps.resolve.outputs.command)
+        run: npm install
+
+      - name: Health check
+        if: steps.resolve.outputs.command == 'health-check' || steps.resolve.outputs.command == 'full-safe-check'
+        run: |
+          test -f package.json
+          test -f vercel.json
+          test -f app/workflow/page.jsx
+          test -f app/dashboard/page.jsx
+          test -f app/automation/page.jsx
+          test -f app/vault/page.jsx
+          test -f app/settings/page.jsx
+          echo "ECL health check passed."
+
+      - name: Build check
+        if: steps.resolve.outputs.command == 'build-check' || steps.resolve.outputs.command == 'full-safe-check'
+        run: npm run build
+
+      - name: Sync Vercel framework to Next.js
+        if: steps.resolve.outputs.command == 'sync-vercel-framework' || steps.resolve.outputs.command == 'full-safe-check'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_PROJECT_ID" ] || [ -z "$VERCEL_TEAM_ID" ]; then
+            echo "Missing Vercel secrets. Required: VERCEL_TOKEN, VERCEL_PROJECT_ID, VERCEL_TEAM_ID"
+            exit 1
+          fi
+          RESPONSE=$(curl -sS -w "\n%{http_code}" -X PATCH "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_TEAM_ID" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{"framework":"nextjs","buildCommand":"npm run build","installCommand":"npm install","outputDirectory":null,"rootDirectory":null}')
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
+          echo "$BODY"
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "Vercel framework sync failed with HTTP $STATUS"
+            exit 1
+          fi
+
+      - name: Workflow sync check
+        if: steps.resolve.outputs.command == 'workflow-sync-check' || steps.resolve.outputs.command == 'full-safe-check'
+        run: |
+          test -f lib/ecl-data.js
+          grep -q "workflowCards" lib/ecl-data.js
+          grep -q "workflowPhases" lib/ecl-data.js
+          grep -q "Shopify" lib/ecl-data.js
+          grep -q "Apps Script" lib/ecl-data.js
+          echo "Workflow data model check passed."
+
+      - name: Supabase schema check
+        if: steps.resolve.outputs.command == 'supabase-schema-check' || steps.resolve.outputs.command == 'full-safe-check'
+        run: |
+          if [ -f supabase/schema.sql ]; then
+            grep -q "ecl_workflow_cards" supabase/schema.sql
+            grep -q "ecl_audit_logs" supabase/schema.sql
+            grep -q "ecl_quarantine_items" supabase/schema.sql
+            echo "Supabase schema check passed."
+          else
+            echo "supabase/schema.sql not found yet. Create it before enabling Supabase automation."
+            exit 1
+          fi
+
+      - name: Apps Script bridge check
+        if: steps.resolve.outputs.command == 'apps-script-bridge-check' || steps.resolve.outputs.command == 'full-safe-check'
+        run: |
+          if [ -f apps-script/ecl-command-center-bridge.gs ]; then
+            grep -q "Epoxy Changes Lives" apps-script/ecl-command-center-bridge.gs
+            grep -qi "quarantine" apps-script/ecl-command-center-bridge.gs
+            echo "Apps Script bridge check passed."
+          else
+            echo "apps-script/ecl-command-center-bridge.gs not found yet. Create it before enabling Drive bridge automation."
+            exit 1
+          fi
+
+      - name: Safe completion summary
+        run: |
+          echo "ECL manual GPT bridge completed."
+          echo "Command: ${{ steps.resolve.outputs.command }}"
+          echo "Next: inspect this Actions run, then redeploy Vercel if build/framework checks passed."
