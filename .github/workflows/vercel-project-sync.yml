@@ -1,0 +1,50 @@
+name: ECL Vercel Project Sync
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - vercel.json
+      - package.json
+      - .github/workflows/vercel-project-sync.yml
+
+jobs:
+  sync-vercel-project:
+    name: Set Vercel project to Next.js
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm required GitHub secrets exist
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then echo "Missing VERCEL_TOKEN" && exit 1; fi
+          if [ -z "$VERCEL_PROJECT_ID" ]; then echo "Missing VERCEL_PROJECT_ID" && exit 1; fi
+          if [ -z "$VERCEL_TEAM_ID" ]; then echo "Missing VERCEL_TEAM_ID" && exit 1; fi
+
+      - name: Set Vercel framework and build settings
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+        run: |
+          RESPONSE=$(curl -sS -w "\n%{http_code}" -X PATCH "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_TEAM_ID" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{"framework":"nextjs","buildCommand":"npm run build","installCommand":"npm install","outputDirectory":null,"rootDirectory":null}')
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
+          echo "$BODY"
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "Vercel project update failed with HTTP $STATUS"
+            exit 1
+          fi
+
+      - name: Print safe confirmation
+        run: |
+          echo "ECL Vercel project settings synced. Secrets were not printed."
+          echo "Framework: nextjs"
+          echo "Build Command: npm run build"
+          echo "Install Command: npm install"
+          echo "Workflow primary page remains /workflow"
