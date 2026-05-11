@@ -1,0 +1,27 @@
+{
+  "mission": "Epoxy Changes Lives only",
+  "requested_by": "GPT",
+  "operation": "status",
+  "dry_run": true,
+  "approval_phrase": "",
+  "approval_ticket": "",
+  "payload": {
+    "note": "This file can be updated to trigger the ECL Live Automation Bridge. Live operations require dry_run=false, approval_phrase=ECL APPROVE LIVE AUTOMATION, a non-empty approval_ticket, and the required provider secrets."
+  },
+  "allowed_operations": [
+    "status",
+    "publish_shopify",
+    "delete_drive_files",
+    "post_social_content",
+    "send_email_sms",
+    "full_live_automation"
+  ],
+  "safety": {
+    "shopify_public_storefront": "EpoxyChangesLives.com",
+    "vercel_role": "ECL automation/control app",
+    "supabase_role": "workflow backend",
+    "apps_script_role": "Drive/Sheets/Gmail bridge",
+    "workflow_primary_page": "/workflow",
+    "live_execution_requires_manual_approval": true
+  }
+}
