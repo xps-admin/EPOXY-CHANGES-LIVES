@@ -1,0 +1,15 @@
+{
+  "mission": "Epoxy Changes Lives only",
+  "requested_by": "GPT",
+  "command": "health-check",
+  "allowed_commands": [
+    "health-check",
+    "build-check",
+    "sync-vercel-framework",
+    "workflow-sync-check",
+    "supabase-schema-check",
+    "apps-script-bridge-check",
+    "full-safe-check"
+  ],
+  "notes": "GPT may update this file to trigger the ECL Manual GPT Bridge workflow. This bridge is safe-by-default and does not publish Shopify, delete Drive files, post social content, send email/SMS, or expose secrets."
+}
