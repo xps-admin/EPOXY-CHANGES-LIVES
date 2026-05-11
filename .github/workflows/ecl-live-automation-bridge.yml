@@ -1,0 +1,82 @@
+name: ECL Live Automation Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Live-capable ECL operation"
+        required: true
+        default: "status"
+        type: choice
+        options:
+          - status
+          - publish_shopify
+          - delete_drive_files
+          - post_social_content
+          - send_email_sms
+          - full_live_automation
+      dry_run:
+        description: "Run without making live changes"
+        required: true
+        default: true
+        type: boolean
+      approval_phrase:
+        description: "Required for live: ECL APPROVE LIVE AUTOMATION"
+        required: false
+        default: ""
+      approval_ticket:
+        description: "Required for live: approval/change ticket"
+        required: false
+        default: ""
+  push:
+    paths:
+      - .gpt/ecl-automation-command.json
+
+permissions:
+  contents: read
+
+env:
+  ECL_ONLY: "true"
+  SHOPIFY_PUBLIC_STOREFRONT: "EpoxyChangesLives.com"
+  WORKFLOW_PRIMARY_PAGE: "/workflow"
+
+jobs:
+  ecl-live-automation-bridge:
+    name: Run ECL live-capable automation bridge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ECL repo
+        uses: actions/checkout@v4
+
+      - name: Resolve command file/input
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            node -e "const fs=require('fs'); const command={mission:'Epoxy Changes Lives only',requested_by:'GitHub workflow_dispatch',operation:'${{ inputs.operation }}',dry_run:${{ inputs.dry_run }},approval_phrase:'${{ inputs.approval_phrase }}',approval_ticket:'${{ inputs.approval_ticket }}',payload:{note:'Payload can be supplied by editing .gpt/ecl-automation-command.json for complex operations.'},allowed_operations:['status','publish_shopify','delete_drive_files','post_social_content','send_email_sms','full_live_automation']}; fs.mkdirSync('.gpt',{recursive:true}); fs.writeFileSync('.gpt/ecl-automation-command.json', JSON.stringify(command,null,2));"
+          fi
+          node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('.gpt/ecl-automation-command.json','utf8')); console.log(JSON.stringify({operation:c.operation,dry_run:c.dry_run,approval_ticket:c.approval_ticket ? 'present' : 'missing'},null,2));"
+
+      - name: Validate live safeguards
+        run: |
+          node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('.gpt/ecl-automation-command.json','utf8')); if(c.dry_run===false){ if(c.approval_phrase!=='ECL APPROVE LIVE AUTOMATION') throw new Error('Live blocked: missing approval phrase'); if(!c.approval_ticket) throw new Error('Live blocked: missing approval ticket'); } console.log('Live safeguards validated.');"
+
+      - name: Run live automation bridge
+        env:
+          SHOPIFY_SHOP_DOMAIN: ${{ secrets.SHOPIFY_SHOP_DOMAIN }}
+          SHOPIFY_ADMIN_ACCESS_TOKEN: ${{ secrets.SHOPIFY_ADMIN_ACCESS_TOKEN }}
+          SHOPIFY_PUBLICATION_ID: ${{ secrets.SHOPIFY_PUBLICATION_ID }}
+          SHOPIFY_API_VERSION: ${{ secrets.SHOPIFY_API_VERSION }}
+          ECL_APPS_SCRIPT_WEBAPP_URL: ${{ secrets.ECL_APPS_SCRIPT_WEBAPP_URL }}
+          ECL_APPS_SCRIPT_SECRET: ${{ secrets.ECL_APPS_SCRIPT_SECRET }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/ecl-live-automation.mjs
+
+      - name: Safe completion note
+        run: |
+          echo "ECL live automation bridge completed. Review output carefully."
+          echo "Live actions require explicit approval_phrase and approval_ticket."
+          echo "Epoxy Changes Lives only. Workflow remains primary."
